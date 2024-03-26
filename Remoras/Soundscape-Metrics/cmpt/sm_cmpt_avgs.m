@@ -35,8 +35,33 @@ end
 %% find which time bins to be computed fall within this LTSA
 starttime = REMORA.sm.cmpt.header(1,1);
 endtime = REMORA.sm.cmpt.header(end,1) + datenum([0 0 0 0 0 PARAMS.ltsa.tave]);
-thisavgbins = find(REMORA.sm.cmpt.avgbins>=starttime & ...
-    REMORA.sm.cmpt.avgbins<=endtime);
+
+my_time = REMORA.sm.cmpt.avgbins;
+actual_dates = datetime(my_time,'ConvertFrom','datenum');
+actual_start = datetime(starttime,'ConvertFrom','datenum');
+actual_end = datetime(endtime,'ConvertFrom','datenum');
+
+% if header has end times at 0:
+if endtime == datenum([0 0 0 0 0 PARAMS.ltsa.tave]); % meaning the endtime was 0
+disp('End time needed adjustments, going to the last nonzero end time.')
+new_endtime_idx = find(REMORA.sm.cmpt.header(:,1)>0,1,'last'); % get the index of the last nonzero time
+endtime = REMORA.sm.cmpt.header(new_endtime_idx,1) + datenum([0 0 0 0 0 PARAMS.ltsa.tave]); % make this the new endtime with the added buffer
+end
+
+% if our ltsa time is less than our time bin:
+actual_end = datetime(endtime,'ConvertFrom','datenum'); % to override an end time of zero 
+time_dur = actual_end-actual_start;
+time_dur_sec = seconds(time_dur);
+avgt = REMORA.sm.cmpt.avgt;
+if time_dur_sec < avgt
+    actual_start % displays the start and end times
+    actual_end
+    disp('LTSA time less than average bin.')
+end
+
+thisavgbins = find(my_time>=starttime & ...
+    my_time<=endtime);
+
 %%%%%%% check next line logic!!!!!
 if thisavgbins(1) ~= 1
     thisavgbins = [thisavgbins(1)-1; thisavgbins]; % move to one index prior to include starttime
