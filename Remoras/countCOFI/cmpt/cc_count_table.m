@@ -39,9 +39,10 @@ global PARAMS REMORA
 [REMORA.cc.count.PathFileList, REMORA.cc.count.FileList, REMORA.cc.count.PathList] = ...
     utFindFiles('*.txt', REMORA.cc.count.indir, 0);
 
-%Create output file name - this is just the name of the first daily expanded file
-% get name of first daily expanded file
-REMORA.cc.count.outputFileName = [REMORA.cc.count.FileList{1}(4:7), '-', REMORA.cc.count.FileList{1}(8:9) '.csv'];
+%Fallback output file name from the first daily expanded file (CC-YYYYMMDD.txt)
+% -> CC-YYYYMM.csv. Replaced below by the cruise-based name (e.g. cruise
+% 202607SH -> CC-202607.csv) once the cruise codes have been read.
+REMORA.cc.count.outputFileName = ['CC-', REMORA.cc.count.FileList{1}(4:9), '.csv'];
 REMORA.cc.count.outputFile = fullfile(REMORA.cc.count.outdir, REMORA.cc.count.outputFileName);
 
 % Initialize the master table outside the loop
@@ -400,6 +401,15 @@ for i = 1:length(REMORA.cc.count.FileList)
 end
 
 
+% Name the table after the cruise (CC-YYYYMM.csv, the name the
+% CountCOFI_pipeline R scripts expect). Keeps the fallback name above if no
+% usable cruise code is found.
+cruiseFileName = cc_cruise_file_name(REMORA.cc.count.masterTable.Cruise);
+if ~isempty(cruiseFileName)
+    REMORA.cc.count.outputFileName = cruiseFileName;
+end
+REMORA.cc.count.outputFile = fullfile(REMORA.cc.count.outdir, REMORA.cc.count.outputFileName);
+
 % Write the combined table to the output file
 writetable(REMORA.cc.count.masterTable, REMORA.cc.count.outputFile);
 
@@ -441,4 +451,36 @@ fclose(fid);
 
 % Display a message indicating that the files have been concatenated
 disp(['Table creation complete! '  REMORA.cc.count.outputFileName  ' has been written to '  REMORA.cc.count.outdir ' !!!']);
+end
+
+
+function outName = cc_cruise_file_name(cruiseCol)
+% Build 'CC-YYYYMM.csv' from the cruise codes in the table's Cruise column.
+% Current codes look like 202607SH (YYYYMM); older ones like CalCOFI0501NH
+% or CC2501RL (YYMM, read as 20YY). Returns '' (with a warning) if no
+% usable code is found, so the caller keeps its fallback name.
+outName = '';
+s = string(cruiseCol);
+s(ismissing(s)) = "";
+s = strtrim(s);
+s = s(s ~= "" & upper(s) ~= "NA");
+codes = unique(s, 'stable');
+if isempty(codes)
+    warning('No cruise code found in the expanded files; naming the table by the first file''s month instead.');
+    return
+end
+if numel(codes) > 1
+    warning('More than one cruise code in these files (%s); naming the table after the first one, %s.', ...
+        strjoin(codes, ', '), codes(1));
+end
+code = char(codes(1));
+ym = regexp(code, '\d{6}|\d{4}', 'match', 'once');
+if length(ym) == 4
+    ym = ['20' ym];
+end
+if isempty(ym) || str2double(ym(5:6)) < 1 || str2double(ym(5:6)) > 12
+    warning('Couldn''t read a year and month from cruise code "%s"; naming the table by the first file''s month instead.', code);
+    return
+end
+outName = ['CC-', ym, '.csv'];
 end
